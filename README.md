@@ -1,1 +1,1 @@
-# p8105_hw2_yz4720
+Homework 2 for P8105 by Jasmine Zhang (UNI: yz4720)

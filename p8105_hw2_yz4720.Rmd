@@ -4,3 +4,55 @@ author: "Jasmine Zhang"
 date: "2023-10-04"
 output: github_document
 ---
+# Problem 1
+```{r setup}
+library(tidyverse)
+library(readxl)
+```
+## pols_month dataset
+```{r pols month}
+month_df = 
+  tibble(
+    month_num = 1:12,
+    month_abb = month.abb,
+    month = month.name
+  )
+
+pols_month_data = read_csv(file = "./Data/pols-month.csv") |> 
+  separate(mon, c("year", "month_num", "day"), convert=TRUE) |> 
+  mutate(president = recode(prez_gop, "0" = "dem", "1" = "gop", "2" = "gop")) |>
+  left_join(x = _, y = month_df) |> 
+  select(year, month, everything(), -day, -starts_with("prez"))
+pols_month_data
+```
+## snp dataset
+```{r snp}
+snp_data = read_csv(file = "./Data/snp.csv") |> 
+  separate(date, c("month", "day", "year"), convert=TRUE) |> 
+  arrange(year, month)|>
+  mutate(month = month.name[month]) |>
+  select(year, month, close) 
+snp_data
+```
+## Unemployment dataset
+```{r unemployment}
+unemployment_data = 
+  read_csv("./Data/unemployment.csv") |>
+  rename(year = Year) |>
+  pivot_longer(
+    Jan:Dec, 
+    names_to = "month_abb",
+    values_to = "unemployment"
+  ) |> 
+  left_join(x = _, y = month_df) |> 
+  select(year, month, unemployment)
+unemployment_data
+```
+## Merging datasets
+```{r}
+data_538 = 
+  left_join(pols_month_data, snp_data) |>
+  left_join(x = _, y = unemployment_data)
+str(data_538)
+```
+

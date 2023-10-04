@@ -19,18 +19,19 @@ month_df =
   )
 
 pols_month_data = read_csv(file = "./Data/pols-month.csv") |> 
-  separate(mon, c("year", "month_num", "day"), convert=TRUE) |> 
+  separate(mon, into = c("year", "month_num", "day"), convert = TRUE) |>
   mutate(president = recode(prez_gop, "0" = "dem", "1" = "gop", "2" = "gop")) |>
   left_join(x = _, y = month_df) |> 
-  select(year, month, everything(), -day, -starts_with("prez"))
+  select(year, month, everything(), -day, -starts_with("prez")) 
 pols_month_data
 ```
 ## snp dataset
 ```{r snp}
-snp_data = read_csv(file = "./Data/snp.csv") |> 
-  separate(date, c("month", "day", "year"), convert=TRUE) |> 
-  arrange(year, month)|>
-  mutate(month = month.name[month]) |>
+snp_data = read_csv(file = "./Data/snp.csv",
+    col_types = cols(date = col_date(format = "%m/%d/%y"))) |> 
+  separate(date, into = c("year", "month_num", "day"), convert = TRUE) |>
+  mutate(year = if_else(year > 2023, year - 100, year)) |> 
+  left_join(x = _, y = month_df) |> 
   select(year, month, close) 
 snp_data
 ```
@@ -54,5 +55,102 @@ data_538 =
   left_join(pols_month_data, snp_data) |>
   left_join(x = _, y = unemployment_data)
 str(data_538)
+```
+
+The `pols_month_data` data has `r nrow(pols_month_data)` observations and `r ncol(pols_month_data)` variables and tells us about the party affiliation distribution (democrat or republican) for governors and senators for a given year from years `r pols_month_data |> pull(year) |> min()` to `r pols_month_data |> pull(year) |> max()`. It also tells us whether the sitting president was a democrat or republican. 
+
+The `snp_data` data has `r nrow(snp_data)` observations and `r ncol(snp_data)` variables, ranging from years `r snp_data |> pull(year) |> min()` to `r snp_data |> pull(year) |> max()`. 
+
+The `unemployment_data` data has `r nrow(unemployment_data)` observations and `r ncol(unemployment_data)` variables ranging from years `r unemployment_data |> pull(year) |> min()` to `r unemployment_data |> pull(year) |> max()`. In Januarys in or after 1975 in which a democrat was president, the **average unemployment rate was `r filter(data_538, month == "January", year >= 1975, president == "dem") |> pull(unemployment) |> mean() |> round(2)`**.  The average unemployment rate over the same time period in which a republican was president was `r filter(data_538, month == "January", year >= 1975, president == "gop") |> pull(unemployment) |> mean() |> round(2)`.
+
+
+# Problem 2
+## Mr. Trash Wheel sheet
+```{r Mr. Trash Wheel}
+mr_trashwheel_df = 
+  read_excel("./Data/mr_trash_wheel_dataset.xlsx", sheet = 1) |> 
+  janitor::clean_names() |> 
+  drop_na(dumpster) |>
+  mutate(homes_powered = weight_tons*500/30,
+         year = as.numeric(year),
+         type = "Mr_Trash_Wheel") |> 
+  select(1:14, type) |> 
+  select(year, month, everything())
+mr_trashwheel_df
+```
+## Professor Trash Wheel sheet
+```{r Professor Trash Wheel}
+prof_trashwheel_df = 
+  read_excel("./Data/mr_trash_wheel_dataset.xlsx", sheet = 2) |> 
+  janitor::clean_names() |> 
+  drop_na(dumpster) |> 
+  mutate(homes_powered = weight_tons*500/30,
+         type = "Professor_Trash_Wheel")|> 
+  select(year, month, everything()) 
+prof_trashwheel_df
+```
+## Gwynnda Trash Wheel sheet
+```{r Gwynnda Trash Wheel}
+gwynnda_trashwheel_df = 
+  read_excel("./Data/mr_trash_wheel_dataset.xlsx", sheet = 4) |> 
+  janitor::clean_names() |> 
+  drop_na(dumpster) |> 
+  mutate(homes_powered = weight_tons*500/30,
+         type = "Gwynnda_Trash_Wheel")|> 
+  select(year, month, everything()) 
+gwynnda_trashwheel_df
+```
+## Merge Datasets
+```{r}
+trashwheel_df = 
+  full_join(mr_trashwheel_df, prof_trashwheel_df) |> 
+  full_join(x = _, y = gwynnda_trashwheel_df)
+summary(trashwheel_df)
+```
+
+The `trashwheel_df` dataset has `r nrow(trashwheel_df)` observations. The key variables include the month and year of each trash dump, the weight of each trash dump in tons, number of pieces of different types of trash, and the number of homes whose electricity is provided by each trash dump. The total weight of trash collected by Professor Trash Wheel is `r filter(trashwheel_df, type == "Professor_Trash_Wheel") |> pull(weight_tons) |> sum()`.
+
+# Problem 3
+## Baseline MCI
+```{r MCI baseline}
+mci_baseline_df = read_csv("./Data/data_mci/MCI_baseline.csv", na = ".", skip = 1)
+str(mci_baseline_df)
+
+mci_baseline_df = 
+  janitor::clean_names(mci_baseline_df) |> 
+  drop_na(age_at_onset) |> 
+  mutate(sex = case_match(sex,
+      1~"male",
+      0~"female"),
+      apoe4 = case_match(apoe4,
+      1~"carrier",
+      0~"non-carrier")
+      )
+str(mci_baseline_df)
+```
+Discuss important steps in the import process and relevant features of the dataset. How many participants were recruited, and of these how many develop MCI? What is the average baseline age? What proportion of women in the study are APOE4 carriers?
+
+The original MCI baseline dataset has 483 participants recruited, with variables including age at baseline, sex, years of education, whether the participant is a APOE4 carrier or not, and age at MCI onset.
+
+Among all the participant, `r nrow(mci_baseline_df)` developed MCI. The average baseline age is `r round(mean(pull(mci_baseline_df, current_age)),1)`. The proportion of women in the study who are APOE4 carriers is `r (filter (mci_baseline_df, sex == "female") |> filter (apoe4 == "carrier") |> count()) / (filter(mci_baseline_df, sex == "female") |> count())`.
+
+## Amyloid MCI 
+```{r MCI amyloid}
+mci_amyloid_df = 
+  read_csv("./Data/data_mci/mci_amyloid.csv", na = c("Na", "NA"), skip = 1) |> 
+  janitor::clean_names() |> 
+  drop_na() |> 
+  rename("id" = "study_id")
+```
+## Datasets analysis
+```{r}
+#Participants only in baseline dataset
+anti_join(mci_baseline_df, mci_amyloid_df)
+#Participants only in amyloid dataset
+anti_join(mci_amyloid_df, mci_baseline_df)
+```
+```{r both}
+#Participants in both baseline and amyloid datasets
+inner_join(mci_baseline_df, mci_amyloid_df)
 ```
 

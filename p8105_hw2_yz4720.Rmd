@@ -61,7 +61,7 @@ The `pols_month_data` data has `r nrow(pols_month_data)` observations and `r nco
 
 The `snp_data` data has `r nrow(snp_data)` observations and `r ncol(snp_data)` variables, ranging from years `r snp_data |> pull(year) |> min()` to `r snp_data |> pull(year) |> max()`. 
 
-The `unemployment_data` data has `r nrow(unemployment_data)` observations and `r ncol(unemployment_data)` variables ranging from years `r unemployment_data |> pull(year) |> min()` to `r unemployment_data |> pull(year) |> max()`. In Januarys in or after 1975 in which a democrat was president, the **average unemployment rate was `r filter(data_538, month == "January", year >= 1975, president == "dem") |> pull(unemployment) |> mean() |> round(2)`**.  The average unemployment rate over the same time period in which a republican was president was `r filter(data_538, month == "January", year >= 1975, president == "gop") |> pull(unemployment) |> mean() |> round(2)`.
+The `unemployment_data` data has `r nrow(unemployment_data)` observations and `r ncol(unemployment_data)` variables ranging from years `r unemployment_data |> pull(year) |> min()` to `r unemployment_data |> pull(year) |> max()`. In Januarys in or after 1975 in which a democrat was president, the average unemployment rate was `r filter(data_538, month == "January", year >= 1975, president == "dem") |> pull(unemployment) |> mean() |> round(2)`.  The average unemployment rate over the same time period in which a republican was president was `r filter(data_538, month == "January", year >= 1975, president == "gop") |> pull(unemployment) |> mean() |> round(2)`.
 
 
 # Problem 2
@@ -104,11 +104,12 @@ gwynnda_trashwheel_df
 ```{r}
 trashwheel_df = 
   full_join(mr_trashwheel_df, prof_trashwheel_df) |> 
-  full_join(x = _, y = gwynnda_trashwheel_df)
+  full_join(x = _, y = gwynnda_trashwheel_df) |> 
+  select(year, month, type, everything())
 summary(trashwheel_df)
 ```
 
-The `trashwheel_df` dataset has `r nrow(trashwheel_df)` observations. The key variables include the month and year of each trash dump, the weight of each trash dump in tons, number of pieces of different types of trash, and the number of homes whose electricity is provided by each trash dump. The total weight of trash collected by Professor Trash Wheel is `r filter(trashwheel_df, type == "Professor_Trash_Wheel") |> pull(weight_tons) |> sum()`.
+The `trashwheel_df` dataset has `r nrow(trashwheel_df)` observations, which is the addition of the observations in `mr_trashwheel_df`, `prof_trashwheel_df`, and `gwynnda_trashwheel_df` datasets. The key variables include the month and year of each trash dump, the weight of each trash dump in tons, number of pieces of different types of trash, and the number of homes whose electricity is provided by each trash dump. The total weight of trash collected by Professor Trash Wheel is `r filter(trashwheel_df, type == "Professor_Trash_Wheel") |> pull(weight_tons) |> sum()`. The total number of cigarette butts collected by Gwynnda in July of 2021 is `r filter(trashwheel_df, type == "Gwynnda_Trash_Wheel" & year == 2021 & month == "July")|> pull(cigarette_butts) |> sum()`.
 
 # Problem 3
 ## Baseline MCI
@@ -118,7 +119,7 @@ str(mci_baseline_df)
 
 mci_baseline_df = 
   janitor::clean_names(mci_baseline_df) |> 
-  drop_na(age_at_onset) |> 
+  filter(age_at_onset>current_age | is.na(age_at_onset)) |> 
   mutate(sex = case_match(sex,
       1~"male",
       0~"female"),
@@ -128,20 +129,29 @@ mci_baseline_df =
       )
 str(mci_baseline_df)
 ```
-Discuss important steps in the import process and relevant features of the dataset. How many participants were recruited, and of these how many develop MCI? What is the average baseline age? What proportion of women in the study are APOE4 carriers?
 
-The original MCI baseline dataset has 483 participants recruited, with variables including age at baseline, sex, years of education, whether the participant is a APOE4 carrier or not, and age at MCI onset.
+The original MCI baseline dataset has 483 participants recruited, with variables including age at baseline, sex, years of education, whether the participant is a APOE4 carrier or not, and age at MCI onset. I removed participants who do not meet the inclusion criteria by keeping the ones who remain MCI free during follow-up period and those whose age at onset is greater than age at baseline.
 
-Among all the participant, `r nrow(mci_baseline_df)` developed MCI. The average baseline age is `r round(mean(pull(mci_baseline_df, current_age)),1)`. The proportion of women in the study who are APOE4 carriers is `r (filter (mci_baseline_df, sex == "female") |> filter (apoe4 == "carrier") |> count()) / (filter(mci_baseline_df, sex == "female") |> count())`.
+Among all the participant, `r filter(mci_baseline_df, !is.na(age_at_onset))|> count()` developed MCI. The average baseline age is `r round(mean(pull(mci_baseline_df, current_age)), 1)`. The proportion of women in the study who are APOE4 carriers is `r (filter (mci_baseline_df, sex == "female") |> filter (apoe4 == "carrier") |> count()) / (filter(mci_baseline_df, sex == "female") |> count())`.
 
 ## Amyloid MCI 
 ```{r MCI amyloid}
 mci_amyloid_df = 
   read_csv("./Data/data_mci/mci_amyloid.csv", na = c("Na", "NA"), skip = 1) |> 
   janitor::clean_names() |> 
-  drop_na() |> 
-  rename("id" = "study_id")
+  rename("id" = "study_id",
+         "time_0" = "baseline") |> 
+  pivot_longer(
+    time_0:time_8,
+    names_to = "time_elapsed", 
+    names_prefix = "time_",
+    values_to = "amyloid_ratio"
+  )
+str(mci_amyloid_df)
 ```
+
+After tidying the dataset, `mci_amyloid_df` dataset has `r nrow(mci_amyloid_df)` observations with `r ncol(mci_amyloid_df)` variables: id, time_elapsed (in years), and amyloid ratio. Each id corresponds to one participants and has 5 observations taken at year 0, 2, 4, 6, and 8.
+
 ## Datasets analysis
 ```{r}
 #Participants only in baseline dataset
@@ -149,8 +159,12 @@ anti_join(mci_baseline_df, mci_amyloid_df)
 #Participants only in amyloid dataset
 anti_join(mci_amyloid_df, mci_baseline_df)
 ```
+8 participants only appear in the `mci_baseline_df` dataset. 16 participants (80 observations) only appear in the `mci_amyloid_df` dataset. 
+
 ```{r both}
 #Participants in both baseline and amyloid datasets
-inner_join(mci_baseline_df, mci_amyloid_df)
+MCI_cleaned_df = inner_join(mci_baseline_df, mci_amyloid_df)
+write_csv(MCI_cleaned_df, "Data/data_mci/mci_df_cleaned.csv")
 ```
 
+The resulting dataset has `r nrow(MCI_cleaned_df)` observations, which means `r nrow(MCI_cleaned_df)/5` participants appear in both `mci_baseline_df` and `mci_amyloid_df` datasets. The resulting dataset combines the basic information of each participant (sex, education, apoe4, age at baseline and age at onset) with their amyloid ratio at 5 different time points.
